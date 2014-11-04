@@ -1,0 +1,46 @@
+<openerp>
+    <data>
+
+	<record id="view_authorize_config_tree" model="ir.ui.view">
+	    <field name="name">Authorize Config Tree</field>
+	    <field name="model">authorize.config</field>
+	    <field name="arch" type="xml">
+                <tree>
+                    <field name="merchant_id" />
+                    <field name="gateway_mode" />
+                </tree>
+            </field>
+        </record>
+
+        <record id="view_authorize_config_form" model="ir.ui.view">
+            <field name="name">Authorize Config Form</field>
+            <field name="model">authorize.config</field>
+            <field name="arch" type="xml">
+		<form>
+		    <sheet>
+		        <group>
+			    <field name="merchant_id" />
+			    <field name="transaction_key" password="1"/>
+			    <field name="gateway_mode" />
+			    <field name="validation_mode" />
+			    <field name="active" />
+			</group>
+		    </sheet>
+		</form>
+            </field>
+        </record>
+
+        <record id="action_authorize_config" model="ir.actions.act_window">
+            <field name="name">Authorize.net Config</field>
+            <field name="res_model">authorize.config</field>
+            <field name="type">ir.actions.act_window</field>
+            <field name="view_type">form</field>
+            <field name="view_id" ref="view_authorize_config_tree"/>
+        </record>
+
+        <menuitem action="action_authorize_config"
+        id="menu_authorize_config"
+        parent="payment.root_payment_menu" />
+
+    </data>
+</openerp>

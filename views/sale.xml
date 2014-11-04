@@ -1,0 +1,22 @@
+<openerp>
+    <data>
+        <record id="view_sale_billing_payment_form" model="ir.ui.view">
+            <field name="name">Sale Order Billing Form</field>
+            <field name="model">sale.order</field>
+            <field name="inherit_id" ref="payment_method.view_sale_billing_form" />
+            <field name="arch" type="xml">
+		<group name="payment" position="after">
+		    <group string="CIM" attrs="{'invisible': [('payment_method', '=', False)]}">
+			<field name="payment_profile" on_change="onchange_payment_profile(payment_profile)"/>
+			<field name="payment_auth_code" />
+			<field name="authorization_amount" />
+			<field name="payment_transaction_id" />
+			<field name="card_type" readonly="1" />
+			<field name="card_expiration_date" readonly="1" />
+			<field name="auth_type" readonly="1" />
+		    </group>
+		</group>
+            </field>
+        </record>
+    </data>
+</openerp>

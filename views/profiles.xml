@@ -1,0 +1,32 @@
+<openerp>
+    <data>
+
+	<record id="view_payment_profile_tree" model="ir.ui.view">
+	    <field name="name">Payment Profile Tree</field>
+	    <field name="model">payment.profile</field>
+	    <field name="arch" type="xml">
+                <tree>
+                    <field name="profile" />
+                    <field name="partner" />
+		    <field name="card_type" />
+		    <field name="card_number" />
+		    <field name="expiration_date" />
+                </tree>
+            </field>
+        </record>
+
+        <record id="action_payment_profile" model="ir.actions.act_window">
+            <field name="name">Payment Profiles</field>
+            <field name="res_model">payment.profile</field>
+            <field name="type">ir.actions.act_window</field>
+            <field name="view_type">form</field>
+	    <field name="view_mode">tree</field>
+            <field name="view_id" ref="view_payment_profile_tree"/>
+        </record>
+
+        <menuitem action="action_payment_profile"
+        id="menu_payment_profile"
+        parent="account.menu_finance_receivables"/>
+
+    </data>
+</openerp>

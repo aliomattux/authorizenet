@@ -1,0 +1,63 @@
+from openerp.osv import osv, fields
+
+class SaleOrder(osv.osv):
+    _inherit = 'sale.order'
+    _columns = {
+	'payment_profile': fields.many2one('payment.profile', 'Payment Profile', \
+		domain="[('partner', '=', partner_id)]"
+	),
+	'payment_auth_code': fields.char('Authorization Code'),
+	'payment_transaction_id': fields.char('Transaction ID'),
+	'authorization_amount': fields.float('Authorization Amount'),
+	'auth_type': fields.selection([
+				       ('auth_only', 'Authorization Only'),
+				       ('auth_capture', 'Authorization w/ Auto Capture'),
+	], 'Authorization Type'),
+	'card_type': fields.related('payment_profile', 'card_type', type="char", \
+		string='Card Type'
+	),
+	'card_expiration_date': fields.related('payment_profile', 'expiration_date', \
+		type="char", string='Expiration Date'
+	),
+    }
+	
+    def onchange_payment_profile(self, cr, uid, ids, profile_id, context=None):
+        vals = {
+                'card_number': False,
+		'card_type': False,
+                'expiration_date': False,
+                'cvv_code': False,
+        }
+        if profile_id:
+            profile = self.pool.get('payment.profile').browse(cr, uid, profile_id)
+            vals.update({
+		'card_type': profile.card_type,
+                'card_number': profile.card_number,
+                'card_expiration_date': profile.expiration_date,
+            })
+
+        return {'value': vals}
+
+
+    def action_invoice_create(self, cr, uid, ids, grouped=False, states=None, \
+	date_invoice = False, context=None
+        ):
+
+	invoice_id = super(SaleOrder, self).action_invoice_create(cr, uid, ids, grouped=False, \
+		states=None, date_invoice = False, context=None
+        )
+
+	if type(invoice_id) != list and len(ids) == 1:
+	    invoice = self.pool.get('account.invoice').browse(cr, uid, invoice_id)
+	    sale = self.browse(cr, uid, ids[0])
+	    invoice.sale_order = sale.id
+
+	    if sale.payment_profile:
+		invoice.payment_profile = sale.payment_profile
+
+	    if sale.payment_auth_code:
+	        invoice.preauthorization_code = sale.payment_auth_code
+		invoice.preauthorization_transaction_id = sale.payment_transaction_id
+		invoice.preauthorized_amount = sale.authorization_amount
+
+	return invoice_id

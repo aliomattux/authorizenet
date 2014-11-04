@@ -1,0 +1,41 @@
+<openerp>
+    <data>
+        <record model="ir.ui.view" id="view_authorize_payment_voucher_form">
+            <field name="name">Account Voucher Authorize Payment Wizard</field>
+            <field name="model">account.voucher</field>
+	    <field name="inherit_id" ref="account_voucher.view_vendor_receipt_dialog_form" />
+            <field name="arch" type="xml">
+		<field name="partner_id" position="after" >
+		    <field name="invoice" invisible="1" />
+		    <field name="payment_profile" on_change="onchange_payment_profile(payment_profile)"/>
+		    <field name="cc_view_enable" invisible="1" />
+		</field>
+	        <field name="journal_id" position="replace">
+		    <field name="journal_id"
+			domain="[('type','in',['bank', 'cash'])]"
+			invisible="context.get('line_type', False)"
+			widget="selection"
+			on_change="onchange_journal(journal_id, line_cr_ids, False, partner_id, date, amount, type, company_id, context)"
+			string="Payment Method"
+			attrs="{'invisible': [('authorization_code', '!=', False)]}"
+		    />
+		    <field name="authorization_code" readonly="1" attrs="{'invisible': [('authorization_code', '=', False)]}" />
+		    <field name="transaction_id" invisible="1" />
+		    <field name="preauthorized_amount" invisible="1" />
+		</field>
+		<xpath expr="//group" position="after">
+		    <group string="Credit Card Details" attrs="{'invisible': [('cc_view_enable', '=', False)]}">
+		        <field name="billing_address" attrs="{'readonly': [('payment_profile', '!=', False)]}" context="{'creditcard_address': 1}"/>
+			<field name="card_number" attrs="{'readonly': [('payment_profile', '!=', False)]}" />
+			<field name="expiration_date" attrs="{'readonly': [('payment_profile', '!=', False)]}" />
+			<field name="cvv_code" attrs="{
+				'readonly': [('payment_profile', '!=', False)],
+				'invisible': [('payment_profile', '!=', False)],
+			}"/>
+		    </group>
+		</xpath>
+	    </field>
+	</record>
+
+    </data>
+</openerp>
