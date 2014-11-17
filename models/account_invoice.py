@@ -13,9 +13,8 @@ class AccountInvoice(osv.osv):
 
     def get_cc_payment_journal(self, cr, uid, sale, context=None):
 	vals = {}
-	journal = sale.payment_method[sale.card_type + '_journal']
-
-	if journal:
+	if sale.card_type:
+	    journal = sale.payment_method[sale.card_type + '_journal']
 	    return journal.id
 
 	return False
