@@ -1,4 +1,5 @@
 from openerp.osv import osv, fields
+from openerp.tools.translate import _
 from suds.client import Client
 
 
@@ -16,7 +17,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 	config_id = config_obj.search(cr, uid, [('active', '=', True)], limit=1)
 
 	if not config_id:
-	    raise
+	    raise osv.except_osv(_('Config Error'), _('Authorize.net is not set up!'))
 
 	config = config_obj.browse(cr, uid, config_id[0])
 	return {

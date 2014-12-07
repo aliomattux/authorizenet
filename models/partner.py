@@ -10,6 +10,7 @@ class ResPartner(osv.osv):
         'payment_profiles': fields.one2many('payment.profile', 'partner', 'Payment Profiles'),
     }
 
+    #This may be removed... Not good to override method and default functionality may help
     def name_get(self, cr, uid, ids, context=None):
         if context is None:
             context = {}
