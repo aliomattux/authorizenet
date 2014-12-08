@@ -14,6 +14,7 @@
 	     'views/payment_method.xml',
 	     'views/account_voucher.xml',
 	     'views/account_journal.xml',
+	     'data/journal.xml',
     ],
     'test': [
     ],

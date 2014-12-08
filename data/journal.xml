@@ -1,0 +1,28 @@
+<openerp>
+    <data noupdate="1">
+	<record id="journal_visa" model="account.journal" >
+	    <field name="name">Visa</field>
+	    <field name="code">VISA</field>
+	    <field name="type">cash</field>
+	    <field name="cc_journal">True</field>
+	</record>
+        <record id="journal_mc" model="account.journal" >
+            <field name="name">Master Card</field>
+            <field name="code">MC</field>
+            <field name="type">cash</field>
+	    <field name="cc_journal">True</field>
+        </record>
+        <record id="journal_disc" model="account.journal" >
+            <field name="name">Discover Card</field>
+            <field name="code">DISC</field>
+            <field name="type">cash</field>
+	    <field name="cc_journal">True</field>
+        </record>
+        <record id="journal_amex" model="account.journal" >
+            <field name="name">American Express</field>
+            <field name="code">AMEX</field>
+            <field name="type">cash</field>
+	    <field name="cc_journal">True</field>
+        </record>
+    </data>
+</openerp>

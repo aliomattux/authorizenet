@@ -25,7 +25,7 @@
 		</field>
 		<xpath expr="//group" position="after">
 		    <group string="Credit Card Details" attrs="{'invisible': [('cc_view_enable', '=', False)]}">
-		        <field name="billing_address" attrs="{'readonly': [('payment_profile', '!=', False)]}" context="{'creditcard_address': 1}"/>
+		        <field name="billing_address" attrs="{'readonly': [('payment_profile', '!=', False)]}" context="{'show_address': 1}" options='{"always_reload": True}'/>
 			<field name="card_number" attrs="{'readonly': [('payment_profile', '!=', False)]}" />
 			<field name="expiration_date" attrs="{'readonly': [('payment_profile', '!=', False)]}" />
 			<field name="cvv_code" attrs="{
