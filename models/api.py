@@ -42,7 +42,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 	object = client.factory.create('CreateCustomerProfileTransaction')
 
 	#If this is collecting a payment
-	if voucher.type == 'receipt':
+	if voucher.invoice.type == 'out_invoice':
 	    #If the voucher has a pre-authorization
 	    if voucher.authorization_code:
                 res = self.capture_prior_auth_transaction(cr, uid, auth, client, \
@@ -72,8 +72,12 @@ class AuthorizeNetAPI(osv.osv_memory):
 		    print 'FINAL RESULT', res2
 
 	#Process a refund
+	elif voucher.invoice.type == 'out_refund':
+	    res3 = self.refund_transaction(cr, uid, auth, client, object, transaction)
+	    print 'Refund Result', res3
+
 	else:
-	    #refund not supported yet
+	    #What happens here?
 	    raise
 
 	return True
@@ -154,6 +158,19 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 	object.transaction = {'profileTransAuthCapture': trans_vals}
 	print 'TRANSACTION', object
+	return client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+
+
+    def refund_transaction(self, cr, uid, auth, client, object, trans_vals):
+	print 'Calling Refund'
+	trans_vals['transId'] = voucher.transaction_id
+	object.transaction = {'profileTransRefund': trans_vals}
+	return client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+
+
+    def void_transaction(self, cr, uid, auth, client, object, trans_vals):
+	trans_vals['transId'] = voucher.transaction_id
+	object.transaction = {'profileTransVoid': trans_vals}
 	return client.service.CreateCustomerProfileTransaction(auth, object.transaction)
 
 
