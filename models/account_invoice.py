@@ -19,7 +19,8 @@ class AccountInvoice(osv.osv):
 
 	return False
 
-
+    #TODO: This method returns vals so there is no reason to override it
+    #Replace with simple super and update vals
     def invoice_pay_customer(self, cr, uid, ids, context=None):
         if not ids: return []
         dummy, view_id = self.pool.get('ir.model.data').get_object_reference(cr, uid, 'account_voucher', 'view_vendor_receipt_dialog_form')
@@ -76,5 +77,4 @@ class AccountInvoice(osv.osv):
 
 	    vals['context'].update(card_vals)
 
-	context.update({'TEST': 'test'})
 	return vals
