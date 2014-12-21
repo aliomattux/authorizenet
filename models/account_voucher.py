@@ -10,11 +10,11 @@ class AccountVoucher(osv.osv):
 	'preauthorized_amount': fields.float('Preauthorized Amount'),
 	'authorization_code': fields.char('Authorization Code'),
 	'billing_address': fields.many2one('res.partner', 'Billing Address', \
-		domain="[('parent_id', '=', partner_id)]"
+		domain="['|',('parent_id', '=', partner_id), ('id', '=', partner_id)]"
 	),
 	'transaction_id': fields.char('Authorize.net Transaction ID'),
 	'payment_profile': fields.many2one('payment.profile', 'Payment Profile', \
-		domain="[('partner', '=', partner_id)]"
+		domain="['|',('partner', '=', partner_id), ('id', '=', partner_id)]"
 	),
 	'card_number': fields.char('Card Number'),
         'expiration_date': fields.char('Expiration Date'),

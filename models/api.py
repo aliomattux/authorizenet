@@ -45,16 +45,14 @@ class AuthorizeNetAPI(osv.osv_memory):
 	if voucher.invoice.type == 'out_invoice':
 	    #If the voucher has a pre-authorization
 	    if voucher.authorization_code:
-                res = self.capture_prior_auth_transaction(cr, uid, auth, client, \
+                self.capture_prior_auth_transaction(cr, uid, auth, client, \
                     object, voucher, transaction
                 )
-		print 'Prior Auth Capture Response', res
 		#If the paid amount is greather than the authorized amount
 		if voucher.amount > voucher.preauthorized_amount:
-		    res2 = self.capture_transaction(cr, uid, auth, client, \
+		    self.capture_transaction(cr, uid, auth, client, \
 			voucher
 		    )
-		    print 'res 2', res2
 
 	    #This is a brand new payment
 	    else:
@@ -66,15 +64,13 @@ class AuthorizeNetAPI(osv.osv_memory):
 			auth, client, voucher
 		    )
 
-		    res2 = self.authorize_and_capture_transaction(cr, uid, auth,\
+		    self.authorize_and_capture_transaction(cr, uid, auth,\
 			 client, object, transaction, profile_info
 		    )
-		    print 'FINAL RESULT', res2
 
 	#Process a refund
 	elif voucher.invoice.type == 'out_refund':
-	    res3 = self.refund_transaction(cr, uid, auth, client, object, transaction)
-	    print 'Refund Result', res3
+	    self.refund_transaction(cr, uid, auth, client, object, transaction)
 
 	else:
 	    #What happens here?
@@ -125,7 +121,13 @@ class AuthorizeNetAPI(osv.osv_memory):
 	trans_vals['transId'] = voucher.transaction_id
 	trans_vals['amount'] = voucher.preauthorized_amount
 	object.transaction = {'profileTransPriorAuthCapture': trans_vals}
-	return client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+
+	try:
+	    response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+	except Exception, e:
+	    response = str(e)
+
+	return self.process_authnet_response(cr, uid, response)
 
 
     def capture_transaction(self, cr, uid, auth, client, voucher):
@@ -137,49 +139,126 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 	trans_vals['approvalCode'] = voucher.authorization_code
 
-	object.transaction = {'profileTransCaptureOnly': trans_vals
-	}
+	object.transaction = {'profileTransCaptureOnly': trans_vals}
 
-        return client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+	try:
+            response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+	except Exception, e:
+	    response = str(e)
+
+	return self.process_authnet_response(cr, uid, response)
+
+
+    #Please help me improve this. Currently I dont know how to parse crap suds response
+    #I know the try except, and parsing here and other places is not good
+    #I want to ensure there is no uncaptured error when dealing with money
+    #So I over ensure that we know exactly what happened and tell the user
+    def process_authnet_response(self, cr, uid, response):
+	message = False
+
+	if not response:
+	    message = 'Generic Error 1. No Response'
+
+	try:
+	    code = response.resultCode
+
+	except Exception, e:
+	    message = 'Could not get Response Code for: ' + str(response)
+
+	if code == 'Ok':
+	    return True
+
+	elif code == 'Error':
+	    try:
+		messages = response.messages
+	    except Exception, e:
+		message = 'Response and code but no message for: ' + str(response)
+
+	    for error in messages:
+		try:
+		    message = str(error[1][0].code) + ' ' + str(error[1][0].text)
+		except Exception, e:
+		    message = 'Couldnt Parse Message: ' + str(error)
+
+		break
+
+	else:
+	    message = 'Unexpected Response Code: ' + str(response)
+
+
+	if message:
+	    raise osv.except_osv(_('Gateway Error'), _(message))
+
+	print 'DEBUG', response
+	return True
 
 
     def authorize_transaction(self, cr, uid, auth, client, object, trans_vals):
 	print 'Call Authorize only'
 	object.transaction = {'profileTransAuthOnly': trans_vals}
-	return client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+	try:
+	    response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+	except Exception, e:
+	    response = str(e)
+	return self.process_authnet_response(cr, uid, response)
 
 
     def authorize_and_capture_transaction(self, cr, uid, auth, client, \
 		object, trans_vals, customer_data=False):
-	print 'Authorize and Capture'
+
 	if customer_data:
 	    trans_vals['customerProfileId'] = customer_data['customer_profile_id']
 	    trans_vals['customerPaymentProfileId'] = customer_data['payment_profile']
 
 	object.transaction = {'profileTransAuthCapture': trans_vals}
-	print 'TRANSACTION', object
-	return client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+
+	try:
+	    response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+	except Exception, e:
+	    response = str(e)
+
+	return self.process_authnet_response(cr, uid, response)
 
 
     def refund_transaction(self, cr, uid, auth, client, object, trans_vals):
 	print 'Calling Refund'
 	trans_vals['transId'] = voucher.transaction_id
 	object.transaction = {'profileTransRefund': trans_vals}
-	return client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+
+	try:
+	    response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+	except Exception, e:
+	    response = str(e)
+
+	return self.process_authnet_response(cr, uid, response)
 
 
     def void_transaction(self, cr, uid, auth, client, object, trans_vals):
 	trans_vals['transId'] = voucher.transaction_id
 	object.transaction = {'profileTransVoid': trans_vals}
-	return client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+
+	try:
+	    response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+	except Exception, e:
+	    response = str(e)
+
+	return self.process_authnet_response(cr, uid, response)
 
 
     def prepare_and_create_payment_profile(self, cr, uid, auth, client, voucher):
 	print 'Creating Customer/Payment Profile'
 	vals = self.prepare_payment_profile(cr, uid, client, voucher)
-	result = self.create_payment_profile(cr, uid, auth, client, vals)
-	print 'PAYMENT RESULT', result
-	for id in result.customerPaymentProfileIdList:
+
+	try:
+	    response = self.create_payment_profile(cr, uid, auth, client, vals)
+	except Exception, e:
+	    response = str(e)
+
+	#Check the response to ensure no error happened
+	self.process_authnet_response(cr, uid, response)
+
+	print 'PAYMENT RESULT', response
+	for id in response.customerPaymentProfileIdList:
 	    payment_id = id[1][0]
 	    break
 
@@ -191,12 +270,13 @@ class AuthorizeNetAPI(osv.osv_memory):
 		'profile': payment_id,
 		'card_number': voucher.card_number[-5:]
 	}
+
 	self.pool.get('res.partner').write(cr, uid, voucher.partner_id.id, \
-		{'customer_profile_id': result.customerProfileId})
+		{'customer_profile_id': response.customerProfileId})
 
 	odoo_payment_id = self.create_odoo_payment_profile(cr, uid, vals)
 	return {'payment_profile': payment_id, 
-		'customer_profile_id': result.customerProfileId
+		'customer_profile_id': response.customerProfileId
 	}
 
 
@@ -215,9 +295,15 @@ class AuthorizeNetAPI(osv.osv_memory):
 	else:
 	    print 'Creating Customer and Payment Profile'
 
+	#Some sloppy solution due to sloppy decision to remove firstname/lastname fields
+	if not partner.firstname:
+	    firstname = partner.name.split(' ')[0]
+	else:
+	    firstname = partner.firstname
+
 	billTo = {
-	    'firstName': partner.firstname,
-	    'lastName': partner.lastname,
+	    'firstName': firstname,
+	    'lastName': partner.lastname or firstname,
 	    'address': address.street,
 	    'city': address.city,
 	    'state': address.state_id.name,
@@ -245,6 +331,4 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 
     def create_payment_profile(self, cr, uid, auth, client, object):
-	print 'Object', object
-	print 'Creating Profile'
 	return client.service.CreateCustomerProfile(auth, object.profile, 'none')
