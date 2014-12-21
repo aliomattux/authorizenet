@@ -5,9 +5,9 @@ from openerp.tools.translate import _
 class AccountInvoice(osv.osv):
     _inherit = 'account.invoice'
     _columns = {
-	'preauthorization_code': fields.char('Authorization Code'),
-	'preauthorization_transaction_id': fields.char('Authorization Transaction ID'),
-	'preauthorized_amount': fields.float('Pre Authorized Amount'),
+	'preauthorization_code': fields.char('Authorization Code', copy=False),
+	'preauthorization_transaction_id': fields.char('Authorization Transaction ID', copy=False),
+	'preauthorized_amount': fields.float('Pre Authorized Amount', copy=False),
     }
 
 

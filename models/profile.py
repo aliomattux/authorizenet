@@ -22,12 +22,12 @@ class PaymentProfile(osv.osv):
 
     _columns = {
 	'partner': fields.many2one('res.partner', 'Name', domain="[('parent_id', '=', False)]"),
-	'profile': fields.integer('Profile ID'),
+	'profile': fields.integer('Profile ID', copy=False),
 	'payment_type': fields.selection([
 			('creditcard', 'Credit Card'),
 			('bank', 'Bank Account'),
 	], 'Payment Type'),
-	'card_number': fields.char('Card Number'),
+	'card_number': fields.char('Card Number', copy=False),
 	'card_type': fields.selection([
 			('amex', 'American Express'),
 			('visa', 'Visa'),

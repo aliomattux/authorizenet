@@ -7,18 +7,18 @@ class AccountVoucher(osv.osv):
     _columns = {
 	'invoice': fields.many2one('account.invoice', 'Invoice'),
 	'cc_view_enable': fields.boolean('Hidden Field Enables/Disables Credit Card View'),
-	'preauthorized_amount': fields.float('Preauthorized Amount'),
-	'authorization_code': fields.char('Authorization Code'),
+	'preauthorized_amount': fields.float('Preauthorized Amount', copy=False),
+	'authorization_code': fields.char('Authorization Code', copy=False),
 	'billing_address': fields.many2one('res.partner', 'Billing Address', \
 		domain="['|',('parent_id', '=', partner_id), ('id', '=', partner_id)]"
 	),
-	'transaction_id': fields.char('Authorize.net Transaction ID'),
+	'transaction_id': fields.char('Authorize.net Transaction ID', copy=False),
 	'payment_profile': fields.many2one('payment.profile', 'Payment Profile', \
 		domain="['|',('partner', '=', partner_id), ('id', '=', partner_id)]"
 	),
-	'card_number': fields.char('Card Number'),
-        'expiration_date': fields.char('Expiration Date'),
-	'cvv_code': fields.char('CVV Code'),
+	'card_number': fields.char('Card Number', copy=False),
+        'expiration_date': fields.char('Expiration Date', copy=False),
+	'cvv_code': fields.char('CVV Code', copy=False),
     }
 
 
