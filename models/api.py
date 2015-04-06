@@ -36,7 +36,6 @@ class AuthorizeNetAPI(osv.osv_memory):
 
     def upsert_external_payment_transaction(self, cr, uid, voucher, journal, context=None):
 	client, auth = self._create_client(cr, uid)
-	
 	#Create a base payment transaction
 	transaction = self.create_transaction_vals(cr, uid, voucher)
 	object = client.factory.create('CreateCustomerProfileTransaction')
@@ -45,21 +44,25 @@ class AuthorizeNetAPI(osv.osv_memory):
 	if voucher.invoice.type == 'out_invoice':
 	    #If the voucher has a pre-authorization
 	    if voucher.authorization_code:
+
                 self.capture_prior_auth_transaction(cr, uid, auth, client, \
                     object, voucher, transaction
                 )
+
 		#If the paid amount is greather than the authorized amount
-		if voucher.amount > voucher.preauthorized_amount:
+		if round(voucher.amount, 2) > round(voucher.preauthorized_amount, 2):
 		    self.capture_transaction(cr, uid, auth, client, \
 			voucher
 		    )
 
 	    #This is a brand new payment
+	    ####  This functionality to be deprecated  ####
 	    else:
 		if voucher.payment_profile:
 		    self.authorize_and_capture_transaction(cr, uid, auth, client, object, transaction)
 
 		else:
+		    raise osv.except_osv(_('System Error'), _("You should not be able to get this far"))
 		    profile_info = self.prepare_and_create_payment_profile(cr, uid, \
 			auth, client, voucher
 		    )
@@ -81,7 +84,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 
     def create_transaction_vals(self, cr, uid, voucher, context=None):
         transaction = {
-                        'amount': voucher.amount,
+                        'amount': round(voucher.amount, 2),
         }
 
 	if voucher.partner_id.customer_profile_id:
@@ -119,11 +122,14 @@ class AuthorizeNetAPI(osv.osv_memory):
 	):
 
 	trans_vals['transId'] = voucher.transaction_id
-	trans_vals['amount'] = voucher.preauthorized_amount
+	if round(voucher.amount, 2) > round(voucher.preauthorized_amount, 2):
+	    trans_vals['amount'] = round(voucher.preauthorized_amount, 2)
+
 	object.transaction = {'profileTransPriorAuthCapture': trans_vals}
 
 	try:
 	    response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+	    print 'SENT', client.last_sent()
 	except Exception, e:
 	    response = str(e)
 
@@ -135,7 +141,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 	#We must create a brand new transaction
 	object = client.factory.create('CreateCustomerProfileTransaction')
 	trans_vals = self.create_transaction_vals(cr, uid, voucher)
-	trans_vals['amount'] = voucher.amount - voucher.preauthorized_amount
+	trans_vals['amount'] = round(voucher.amount, 2) - round(voucher.preauthorized_amount, 2)
 
 	trans_vals['approvalCode'] = voucher.authorization_code
 
@@ -143,6 +149,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 	try:
             response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+	    print 'SENT', client.last_sent()
 	except Exception, e:
 	    response = str(e)
 
@@ -164,6 +171,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 	except Exception, e:
 	    message = 'Could not get Response Code for: ' + str(response)
+	    raise osv.except_osv(_('Gateway Error'), _(message))
 
 	if code == 'Ok':
 	    return True
@@ -214,6 +222,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 	try:
 	    response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+	    print 'SENT', client.last_sent()
 	except Exception, e:
 	    response = str(e)
 
@@ -227,6 +236,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 	try:
 	    response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+	    print 'SENT', client.last_sent()
 	except Exception, e:
 	    response = str(e)
 
@@ -239,10 +249,15 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 	try:
 	    response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+	    print 'SENT', client.last_sent()
 	except Exception, e:
 	    response = str(e)
 
 	return self.process_authnet_response(cr, uid, response)
+
+
+    def handle_duplicate_record_response(self, cr, uid, vals, record_id):
+        return True
 
 
     def prepare_and_create_payment_profile(self, cr, uid, auth, client, voucher):
@@ -251,6 +266,8 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 	try:
 	    response = self.create_payment_profile(cr, uid, auth, client, vals)
+	    print 'SENT', client.last_sent()
+	    print 'RESPONSE', response
 	except Exception, e:
 	    response = str(e)
 
@@ -262,13 +279,15 @@ class AuthorizeNetAPI(osv.osv_memory):
 	    payment_id = id[1][0]
 	    break
 
+	card_hidden = voucher.card_number[-5:]
+
 	vals = {
 		'partner': voucher.partner_id.id,
 		'expiration_date': voucher.expiration_date,
 		'card_type': 'visa',
 		'payment_type': 'creditcard',
 		'profile': payment_id,
-		'card_number': voucher.card_number[-5:]
+		'card_number': card_hidden
 	}
 
 	self.pool.get('res.partner').write(cr, uid, voucher.partner_id.id, \
@@ -276,7 +295,9 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 	odoo_payment_id = self.create_odoo_payment_profile(cr, uid, vals)
 	return {'payment_profile': payment_id, 
-		'customer_profile_id': response.customerProfileId
+		'odoo_payment_id': odoo_payment_id,
+		'customer_profile_id': response.customerProfileId,
+		'card_number': card_hidden,
 	}
 
 

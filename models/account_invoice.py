@@ -51,7 +51,10 @@ class AccountInvoice(osv.osv):
 
 
 	vals['context']['default_invoice'] = invoice.id
-	
+
+	if invoice.purchase_order:
+	    vals['context']['default_supplier_payment'] = True
+
 	if invoice.sale_order and invoice.sale_order.payment_method:
 
 	    journal = self.get_cc_payment_journal(cr, uid, invoice.sale_order)

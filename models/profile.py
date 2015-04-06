@@ -14,6 +14,10 @@ class PaymentProfile(osv.osv):
         res = []
         for record in reads:
             name = record['card_type']
+	    #If card type is blank
+	    if not name:
+		name = 'None'
+
             if record['card_number']:
                 name = name+'/'+record['card_number']
             res.append((record['id'], name))

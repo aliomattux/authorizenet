@@ -19,8 +19,8 @@
 	    <field name="inherit_id" ref="base.view_partner_form" />
             <field name="arch" type="xml">
 		<field name="street" position="before">
-		    <field name="firstname" required="1" />
-		    <field name="lastname" required="1" />
+		    <field name="firstname" attrs="{'required': [('supplier', '=', False)]}" />
+		    <field name="lastname" attrs="{'required': [('supplier', '=', False)]}" />
 		</field>
                 <page string="Internal Notes" position="after">
 		    <page string="CIM" attrs="{'invisible': [('parent_id', '!=', False)]}">

@@ -13,3 +13,5 @@ class ResPartner(osv.osv):
         'customer_id': fields.integer('Customer ID', copy=False),
         'payment_profiles': fields.one2many('payment.profile', 'partner', 'Payment Profiles'),
     }
+
+
