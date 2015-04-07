@@ -3,7 +3,7 @@
     'version': '1.1',
     'author': 'Kyle Waid',
     'category': 'Sales Management',
-    'depends': ['payment_method', 'payment', 'account_voucher'],
+    'depends': ['payment_method', 'payment', 'account_voucher', 'account_cancel'],
     'website': 'https://www.gcotech.com',
     'description': """ 
     """,

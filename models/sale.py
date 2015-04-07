@@ -6,15 +6,15 @@ class SaleOrder(osv.osv):
 	'payment_profile': fields.many2one('payment.profile', 'Payment Profile', \
 		domain="[('partner', '=', partner_id)]"
 	),
-	'payment_auth_code': fields.char('Authorization Code'),
-	'payment_transaction_id': fields.char('Transaction ID'),
-	'authorization_amount': fields.float('Authorization Amount'),
+	'payment_auth_code': fields.char('Authorization Code', copy=False),
+	'payment_transaction_id': fields.char('Transaction ID', copy=False),
+	'authorization_amount': fields.float('Authorization Amount', copy=False),
 	'auth_type': fields.selection([
 				       ('auth_only', 'Authorization Only'),
 				       ('auth_capture', 'Authorization w/ Auto Capture'),
 	], 'Authorization Type'),
 	'card_type': fields.related('payment_profile', 'card_type', type="char", \
-		string='Card Type'
+		string='Card Type', copy=False
 	),
 	'card_expiration_date': fields.related('payment_profile', 'expiration_date', \
 		type="char", string='Expiration Date'

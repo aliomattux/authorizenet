@@ -5,9 +5,9 @@ from openerp.tools.translate import _
 class AccountInvoice(osv.osv):
     _inherit = 'account.invoice'
     _columns = {
-	'preauthorization_code': fields.char('Authorization Code'),
-	'preauthorization_transaction_id': fields.char('Authorization Transaction ID'),
-	'preauthorized_amount': fields.float('Pre Authorized Amount'),
+	'preauthorization_code': fields.char('Authorization Code', copy=False),
+	'preauthorization_transaction_id': fields.char('Authorization Transaction ID', copy=False),
+	'preauthorized_amount': fields.float('Pre Authorized Amount', copy=False),
     }
 
 
@@ -19,7 +19,8 @@ class AccountInvoice(osv.osv):
 
 	return False
 
-
+    #TODO: This method returns vals so there is no reason to override it
+    #Replace with simple super and update vals
     def invoice_pay_customer(self, cr, uid, ids, context=None):
         if not ids: return []
         dummy, view_id = self.pool.get('ir.model.data').get_object_reference(cr, uid, 'account_voucher', 'view_vendor_receipt_dialog_form')
@@ -50,7 +51,10 @@ class AccountInvoice(osv.osv):
 
 
 	vals['context']['default_invoice'] = invoice.id
-	
+
+	if invoice.purchase_order:
+	    vals['context']['default_supplier_payment'] = True
+
 	if invoice.sale_order and invoice.sale_order.payment_method:
 
 	    journal = self.get_cc_payment_journal(cr, uid, invoice.sale_order)
@@ -76,5 +80,4 @@ class AccountInvoice(osv.osv):
 
 	    vals['context'].update(card_vals)
 
-	context.update({'TEST': 'test'})
 	return vals

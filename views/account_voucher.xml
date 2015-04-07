@@ -7,7 +7,8 @@
             <field name="arch" type="xml">
 		<field name="partner_id" position="after" >
 		    <field name="invoice" invisible="1" />
-		    <field name="payment_profile" on_change="onchange_payment_profile(payment_profile)"/>
+		    <field name="supplier_payment" invisible="1" />
+		    <field name="payment_profile" on_change="onchange_payment_profile(payment_profile)" attrs="{'invisible': [('supplier_payment', '=', True)]}" />
 		    <field name="cc_view_enable" invisible="1" />
 		</field>
 	        <field name="journal_id" position="replace">
@@ -19,6 +20,7 @@
 			string="Payment Method"
 			attrs="{'invisible': [('authorization_code', '!=', False)]}"
 		    />
+		    <field name="manual_override" attrs="{'invisible': [('cc_view_enable', '=', False)]}" />
 		    <field name="authorization_code" readonly="1" attrs="{'invisible': [('authorization_code', '=', False)]}" />
 		    <field name="transaction_id" invisible="1" />
 		    <field name="preauthorized_amount" invisible="1" />

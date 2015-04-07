@@ -1,8 +1,5 @@
 from openerp.osv import osv, fields
 
-
-
-
 class AuthorizeConfig(osv.osv):
     _name = 'authorize.config'
     _rec_name = 'merchant_id'
