@@ -8,6 +8,7 @@ class AccountVoucher(osv.osv):
 	'invoice': fields.many2one('account.invoice', 'Invoice'),
 	'manual_override': fields.boolean('Manual Override'),
 	'supplier_payment': fields.boolean('Supplier Payment', help='Hides payment profile if true'),
+	'refunded': fields.boolean('Refunded'),
 	'cc_view_enable': fields.boolean('view_enable', help='Hidden Field Enables/Disables Credit Card View'),
 	'preauthorized_amount': fields.float('Preauthorized Amount', copy=False),
 	'authorization_code': fields.char('Authorization Code', copy=False),

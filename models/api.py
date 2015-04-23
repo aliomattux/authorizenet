@@ -72,8 +72,11 @@ class AuthorizeNetAPI(osv.osv_memory):
 		    )
 
 	#Process a refund
+	#When you refund a payment you must refund an exisitng paid transaction
+	#This might not be in context when the user presses refund, or there may be multiple authorizations
+	#That need to be refunded individually
 	elif voucher.invoice.type == 'out_refund':
-	    self.refund_transaction(cr, uid, auth, client, object, transaction)
+	    self.find_and_process_refund_vouchers(cr, uid, auth, client, voucher, object, transaction)
 
 	else:
 	    #What happens here?
@@ -101,6 +104,69 @@ class AuthorizeNetAPI(osv.osv_memory):
 #           )
 
         return transaction
+
+
+    def find_and_process_refund_vouchers(self, cr, uid, auth, client, voucher, object, transaction):
+	eligible_refund_vouchers = self.find_eligible_refund_vouchers(cr, uid, 
+	refund_amount = voucher.amount
+
+	if not eligible_refund_vouchers:
+	    raise osv.except_osv(_('User Error'), _('You are trying to process a refund but there are no eligible payments to refund. Please manually refund this transaction in Authorize.net'))
+
+	for eligible_voucher in self.pool.get('account.voucher').browse(cr, uid, eligible_refund_vouchers)
+	    transaction['transId'] = eligible_voucher.transaction_id
+
+	    if round(refund_amount, 2) > round(eligible_voucher.amount, 2):
+		transaction['amount'] = round(eligible_voucher.amount, 2)
+		refund_amount -= round(eligible_voucher.amount, 2)
+	    else:
+		transaction['amount'] = round(refund_amount, 2)
+	        self.refund_transaction(cr, uid, auth, client, voucher, object, transaction)
+		break
+
+	return True
+
+
+    def find_eligible_refund_vouchers(self, cr, uid, voucher, context=None)
+        sale = self.find_sale_reference(cr, uid, voucher)
+	if not sale:
+	    raise osv.except_osv(_('User Error'), _('You are trying to process a refund but there is no sale attached to this invoice for which a refund can be made'))
+
+	checkable_vouchers = []
+        for invoice in sale.invoice_ids:
+	    if invoice.type != 'out_invoice' or invoice.state == 'draft':
+		continue
+
+            voucher_ids = voucher_obj.search(cr, uid, [
+                       ('state', '=', 'posted'),
+                       ('type', '=', 'receipt'),
+                       ('refunded', '!=', True),
+                       ('invoice', '=', invoice.id)
+            ])
+
+	    checkable_vouchers.extend(voucher_ids)
+
+        if checkable_vouchers:
+	    #Check that the total amount is at least enough to satisfy the refund request
+	    query = "SELECT SUM(amount) FROM account_voucher WHERE id "
+	    if len(checkable_vouchers) > 1:
+	        query += "IN %s" % (tuple(checkable_vouchers,))
+	    else:
+		query += "= %s" % checkable_vouchers[0]
+
+	    cr.execute(query)
+	    number = cr.fetchone()[0]
+	    if round(voucher.amount,2) > round(float(number),2):
+		raise osv.except_osv(_('User Error'), _('The refund amount is greater than the amount already charged. You must refund this transaction manually in Authorize.net'))
+
+	    return checkable_vouchers
+
+
+    def find_sale_reference(self, cr, uid, voucher, context=None):
+	if voucher.invoice.sale_order:
+	    return voucher.invoice.sale_order
+
+	return False
 
 
     def prepare_transaction_tax_vals(self, cr, uid, tax_lines, context=None):
@@ -229,9 +295,8 @@ class AuthorizeNetAPI(osv.osv_memory):
 	return self.process_authnet_response(cr, uid, response)
 
 
-    def refund_transaction(self, cr, uid, auth, client, object, trans_vals):
+    def refund_transaction(self, cr, uid, auth, client, voucher, object, trans_vals):
 	print 'Calling Refund'
-	trans_vals['transId'] = voucher.transaction_id
 	object.transaction = {'profileTransRefund': trans_vals}
 
 	try:
@@ -243,7 +308,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 	return self.process_authnet_response(cr, uid, response)
 
 
-    def void_transaction(self, cr, uid, auth, client, object, trans_vals):
+    def void_transaction(self, cr, uid, auth, client, voucher, object, trans_vals):
 	trans_vals['transId'] = voucher.transaction_id
 	object.transaction = {'profileTransVoid': trans_vals}
 
