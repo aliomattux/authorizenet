@@ -1,5 +1,6 @@
 from openerp.osv import osv, fields
 from openerp.tools.translate import _
+from datetime import datetime
 from suds.client import Client
 from pprint import pprint as pp
 
@@ -129,6 +130,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 		transaction['amount'] = round(refund_amount, 2)
 		done = True
 
+	    print 'Calling Refund Function'
 	    self.refund_transaction(cr, uid, auth, client, eligible_voucher, voucher, object, transaction)
 
 	    if done:
@@ -221,6 +223,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 
     def capture_transaction(self, cr, uid, auth, client, voucher):
 
+	voucher_obj = self.pool.get('account.voucher')
 	#We must create a brand new transaction
 	object = client.factory.create('CreateCustomerProfileTransaction')
 	trans_vals = self.create_transaction_vals(cr, uid, voucher)
@@ -243,11 +246,10 @@ class AuthorizeNetAPI(osv.osv_memory):
 	try:
 	    capture_details = response.directResponse
 	    details = capture_details.split(',')
-	    capture_transaction_id = details[5]
+	    capture_transaction_id = details[6]
 	    voucher_obj.write(cr, uid, voucher.id, {'capture_transaction_id': capture_transaction_id,
 					'capture_addl_amount': amount,
 	    })
-
 	except Exception, e:
 	    pass
 
@@ -330,14 +332,17 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 
     def refund_transaction(self, cr, uid, auth, client, original_voucher, voucher, object, trans_vals):
-	print 'Calling Refund'
+
+	#Write that the voucher has been refunded
+	self.pool.get('account.voucher').write(cr, uid, original_voucher.id, {'refunded': True})
+
 	#If the voucher being refunded contains multiple transactions
 	if original_voucher.capture_transaction_id:
 	    capture_vals = trans_vals
 
-	    refund_total = trans_vals['amount']
+	    refund_total = trans_vals['amount'] * -1
 	    charge_amount = round(original_voucher.amount, 2) - round(original_voucher.capture_addl_amount, 2)
-	    capture_amount = round(original_amount.capture_addl_amount, 2)
+	    capture_amount = round(original_voucher.capture_addl_amount, 2)
 
 	    #The refund amount is greater than the additional capture amount
 	    #In this case we need to do 2 calls. Refund the original charge
@@ -345,43 +350,51 @@ class AuthorizeNetAPI(osv.osv_memory):
 	    if refund_total > capture_amount:
 		capture_vals['amount'] = capture_amount 
 	        capture_vals['transId'] = original_voucher.capture_transaction_id
-	        self.send_refund_transaction(cr, uid, auth, client, object, capture_vals)
+	        self.send_refund_transaction(cr, uid, auth, client, object, original_voucher, capture_vals)
 
 		#Once we refund the captured amount, refund the original charge - captured amount.
 		trans_vals['amount'] = refund_total - capture_amount
-		self.send_refund_transaction(cr, uid, auth, client, object, trans_vals)
+#		self.send_refund_transaction(cr, uid, auth, client, object, trans_vals)
 		return True
 
 	    #The additional captured amount is less or equal to the amount required for refund
 	    else:
 		capture_vals['transId'] = original_voucher.capture_transaction_id
-		self.send_refund_transaction(cr, uid, auth, client, object, capture_vals)
+		self.send_refund_transaction(cr, uid, auth, client, object, original_voucher, capture_vals)
 		return True
 
 	#There is no additional captures on the voucher
 	else:
-	    self.send_refund_transaction(cr, uid, auth, client, object, trans_vals)
+	    self.send_refund_transaction(cr, uid, auth, client, object, original_voucher, trans_vals)
 
 
-    def send_refund_transaction(self, cr, uid, auth, client, object, vals):
+    def send_refund_transaction(self, cr, uid, auth, client, object, original_voucher, vals):
+	voucher_date = original_voucher.create_date.split('-')
+	now = datetime.utcnow().strftime('%Y-%m-%d')
+	month = voucher_date[1]
+	day = voucher_date[2].split(' ')[0]
+	#If the transaction was created before settlement it needs to be voided
+	if now.split('-')[-2:] == [month, day]:
+	    return self.void_transaction(cr, uid, auth, client, object, vals)
+
 	object.transaction = {'profileTransRefund': vals}
-	raise
-#	try:
-#	    response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
-#	    print 'SENT', client.last_sent()
-#	except Exception, e:
-#	    response = str(e)
-#
-#	return self.process_authnet_response(cr, uid, response)
+
+	try:
+	    response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+	except Exception, e:
+	    response = str(e)
+
+	return self.process_authnet_response(cr, uid, response)
 
 
-    def void_transaction(self, cr, uid, auth, client, voucher, object, trans_vals):
-	trans_vals['transId'] = voucher.transaction_id
+    def void_transaction(self, cr, uid, auth, client, object, trans_vals):
+	#If this is a void, we dont send amount
+	del trans_vals['amount']
+
 	object.transaction = {'profileTransVoid': trans_vals}
 
 	try:
 	    response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
-	    print 'SENT', client.last_sent()
 	except Exception, e:
 	    response = str(e)
 
@@ -398,15 +411,14 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 	try:
 	    response = self.create_payment_profile(cr, uid, auth, client, vals)
-	    print 'SENT', client.last_sent()
-	    print 'RESPONSE', response
+#	    print 'SENT', client.last_sent()
+#	    print 'RESPONSE', response
 	except Exception, e:
 	    response = str(e)
 
 	#Check the response to ensure no error happened
 	self.process_authnet_response(cr, uid, response)
 
-	print 'PAYMENT RESULT', response
 	for id in response.customerPaymentProfileIdList:
 	    payment_id = id[1][0]
 	    break
@@ -443,10 +455,10 @@ class AuthorizeNetAPI(osv.osv_memory):
 	address = voucher.billing_address
 	partner = voucher.partner_id
 	object = client.factory.create('CreateCustomerProfile')
-	if voucher.partner_id.customer_profile_id:
-	    print 'Only Creating new Payment Profile'
-	else:
-	    print 'Creating Customer and Payment Profile'
+#	if voucher.partner_id.customer_profile_id:
+#	    print 'Only Creating new Payment Profile'
+#	else:
+#	    print 'Creating Customer and Payment Profile'
 
 	#Some sloppy solution due to sloppy decision to remove firstname/lastname fields
 	if not partner.firstname:
