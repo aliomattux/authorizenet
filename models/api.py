@@ -1,7 +1,7 @@
 from openerp.osv import osv, fields
 from openerp.tools.translate import _
 from suds.client import Client
-
+from pprint import pprint as pp
 
 PROD_URL = 'https://api.authorize.net/soap/v1/Service.asmx'
 TEST_URL = 'https://apitest.authorize.net/soap/v1/Service.asmx'
@@ -76,9 +76,12 @@ class AuthorizeNetAPI(osv.osv_memory):
 	#This might not be in context when the user presses refund, or there may be multiple authorizations
 	#That need to be refunded individually
 	elif voucher.invoice.type == 'out_refund':
-	    self.find_and_process_refund_vouchers(cr, uid, auth, client, voucher, object, transaction)
+	    self.find_and_process_refund_vouchers(cr, uid, auth, client, \
+		voucher, object, transaction
+	    )
 
 	else:
+	    print 'Unexpected Invoice Type'
 	    #What happens here?
 	    raise
 
@@ -107,28 +110,36 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 
     def find_and_process_refund_vouchers(self, cr, uid, auth, client, voucher, object, transaction):
-	eligible_refund_vouchers = self.find_eligible_refund_vouchers(cr, uid, 
+	eligible_refund_vouchers = self.find_eligible_refund_vouchers(cr, uid, voucher)
 	refund_amount = voucher.amount
 
 	if not eligible_refund_vouchers:
 	    raise osv.except_osv(_('User Error'), _('You are trying to process a refund but there are no eligible payments to refund. Please manually refund this transaction in Authorize.net'))
 
-	for eligible_voucher in self.pool.get('account.voucher').browse(cr, uid, eligible_refund_vouchers)
-	    transaction['transId'] = eligible_voucher.transaction_id
+	done = False
+	for eligible_voucher in self.pool.get('account.voucher').browse(cr, uid, eligible_refund_vouchers):
 
+	    transaction['transId'] = eligible_voucher.transaction_id
+	
 	    if round(refund_amount, 2) > round(eligible_voucher.amount, 2):
 		transaction['amount'] = round(eligible_voucher.amount, 2)
 		refund_amount -= round(eligible_voucher.amount, 2)
+
 	    else:
 		transaction['amount'] = round(refund_amount, 2)
-	        self.refund_transaction(cr, uid, auth, client, voucher, object, transaction)
+		done = True
+
+	    self.refund_transaction(cr, uid, auth, client, eligible_voucher, voucher, object, transaction)
+
+	    if done:
 		break
 
 	return True
 
 
-    def find_eligible_refund_vouchers(self, cr, uid, voucher, context=None)
+    def find_eligible_refund_vouchers(self, cr, uid, voucher, context=None):
         sale = self.find_sale_reference(cr, uid, voucher)
+	voucher_obj = self.pool.get('account.voucher')
 	if not sale:
 	    raise osv.except_osv(_('User Error'), _('You are trying to process a refund but there is no sale attached to this invoice for which a refund can be made'))
 
@@ -140,9 +151,15 @@ class AuthorizeNetAPI(osv.osv_memory):
             voucher_ids = voucher_obj.search(cr, uid, [
                        ('state', '=', 'posted'),
                        ('type', '=', 'receipt'),
-                       ('refunded', '!=', True),
-                       ('invoice', '=', invoice.id)
+                       ('invoice', '=', invoice.id),
+		       ('transaction_id', '!=', False),
             ])
+	    #There is not a valid 'not in' operator in the ORM. If you have a boolean field
+	    #That contains at least 1 null, you cannot use a domain because all results
+	    #Will be null. The only solution is to use not in.
+	    for v in voucher_obj.browse(cr, uid, voucher_ids):
+		if v.refunded:
+		    del voucher_ids[v.id]
 
 	    checkable_vouchers.extend(voucher_ids)
 
@@ -195,7 +212,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 	try:
 	    response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
-	    print 'SENT', client.last_sent()
+#	    print 'SENT', client.last_sent()
 	except Exception, e:
 	    response = str(e)
 
@@ -207,19 +224,34 @@ class AuthorizeNetAPI(osv.osv_memory):
 	#We must create a brand new transaction
 	object = client.factory.create('CreateCustomerProfileTransaction')
 	trans_vals = self.create_transaction_vals(cr, uid, voucher)
-	trans_vals['amount'] = round(voucher.amount, 2) - round(voucher.preauthorized_amount, 2)
+	amount = round(voucher.amount, 2) - round(voucher.preauthorized_amount, 2)
+	trans_vals['amount'] = amount
 
 	trans_vals['approvalCode'] = voucher.authorization_code
-
 	object.transaction = {'profileTransCaptureOnly': trans_vals}
 
 	try:
             response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
-	    print 'SENT', client.last_sent()
+#	    print 'SENT', client.last_sent()
 	except Exception, e:
 	    response = str(e)
 
-	return self.process_authnet_response(cr, uid, response)
+	#Check if any error is raised
+	self.process_authnet_response(cr, uid, response)
+
+	#Get the new transaction id and amount so it can be used later if a refund is required
+	try:
+	    capture_details = response.directResponse
+	    details = capture_details.split(',')
+	    capture_transaction_id = details[5]
+	    voucher_obj.write(cr, uid, voucher.id, {'capture_transaction_id': capture_transaction_id,
+					'capture_addl_amount': amount,
+	    })
+
+	except Exception, e:
+	    pass
+
+	return True
 
 
     #Please help me improve this. Currently I dont know how to parse crap suds response
@@ -263,17 +295,19 @@ class AuthorizeNetAPI(osv.osv_memory):
 	if message:
 	    raise osv.except_osv(_('Gateway Error'), _(message))
 
-	print 'DEBUG', response
+#	print 'DEBUG', response
 	return True
 
 
     def authorize_transaction(self, cr, uid, auth, client, object, trans_vals):
-	print 'Call Authorize only'
+#	print 'Call Authorize only'
 	object.transaction = {'profileTransAuthOnly': trans_vals}
+
 	try:
 	    response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
 	except Exception, e:
 	    response = str(e)
+
 	return self.process_authnet_response(cr, uid, response)
 
 
@@ -288,24 +322,57 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 	try:
 	    response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
-	    print 'SENT', client.last_sent()
+#	    print 'SENT', client.last_sent()
 	except Exception, e:
 	    response = str(e)
 
 	return self.process_authnet_response(cr, uid, response)
 
 
-    def refund_transaction(self, cr, uid, auth, client, voucher, object, trans_vals):
+    def refund_transaction(self, cr, uid, auth, client, original_voucher, voucher, object, trans_vals):
 	print 'Calling Refund'
-	object.transaction = {'profileTransRefund': trans_vals}
+	#If the voucher being refunded contains multiple transactions
+	if original_voucher.capture_transaction_id:
+	    capture_vals = trans_vals
 
-	try:
-	    response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
-	    print 'SENT', client.last_sent()
-	except Exception, e:
-	    response = str(e)
+	    refund_total = trans_vals['amount']
+	    charge_amount = round(original_voucher.amount, 2) - round(original_voucher.capture_addl_amount, 2)
+	    capture_amount = round(original_amount.capture_addl_amount, 2)
 
-	return self.process_authnet_response(cr, uid, response)
+	    #The refund amount is greater than the additional capture amount
+	    #In this case we need to do 2 calls. Refund the original charge
+	    #And the extra charge we captured
+	    if refund_total > capture_amount:
+		capture_vals['amount'] = capture_amount 
+	        capture_vals['transId'] = original_voucher.capture_transaction_id
+	        self.send_refund_transaction(cr, uid, auth, client, object, capture_vals)
+
+		#Once we refund the captured amount, refund the original charge - captured amount.
+		trans_vals['amount'] = refund_total - capture_amount
+		self.send_refund_transaction(cr, uid, auth, client, object, trans_vals)
+		return True
+
+	    #The additional captured amount is less or equal to the amount required for refund
+	    else:
+		capture_vals['transId'] = original_voucher.capture_transaction_id
+		self.send_refund_transaction(cr, uid, auth, client, object, capture_vals)
+		return True
+
+	#There is no additional captures on the voucher
+	else:
+	    self.send_refund_transaction(cr, uid, auth, client, object, trans_vals)
+
+
+    def send_refund_transaction(self, cr, uid, auth, client, object, vals):
+	object.transaction = {'profileTransRefund': vals}
+	raise
+#	try:
+#	    response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+#	    print 'SENT', client.last_sent()
+#	except Exception, e:
+#	    response = str(e)
+#
+#	return self.process_authnet_response(cr, uid, response)
 
 
     def void_transaction(self, cr, uid, auth, client, voucher, object, trans_vals):

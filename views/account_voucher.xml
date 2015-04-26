@@ -7,6 +7,7 @@
             <field name="arch" type="xml">
 		<field name="partner_id" position="after" >
 		    <field name="invoice" invisible="1" />
+		    <field name="invoice_type" invisible="1" />
 		    <field name="supplier_payment" invisible="1" />
 		    <field name="payment_profile" on_change="onchange_payment_profile(payment_profile)" attrs="{'invisible': [('supplier_payment', '=', True)]}" />
 		    <field name="cc_view_enable" invisible="1" />
@@ -26,7 +27,7 @@
 		    <field name="preauthorized_amount" invisible="1" />
 		</field>
 		<xpath expr="//group" position="after">
-		    <group string="Credit Card Details" attrs="{'invisible': [('cc_view_enable', '=', False)]}">
+		    <group string="Credit Card Details" attrs="{'invisible': ['|',('cc_view_enable', '=', False),('invoice_type', '=', 'out_refund')]}">
 		        <field name="billing_address" attrs="{'readonly': [('payment_profile', '!=', False)]}" context="{'show_address': 1}" options='{"always_reload": True}'/>
 			<field name="card_number" attrs="{'readonly': [('payment_profile', '!=', False)]}" />
 			<field name="expiration_date" attrs="{'readonly': [('payment_profile', '!=', False)]}" />

@@ -6,6 +6,7 @@ class AccountVoucher(osv.osv):
     _inherit = 'account.voucher'
     _columns = {
 	'invoice': fields.many2one('account.invoice', 'Invoice'),
+	'invoice_type': fields.related('invoice', 'type', type="char", string="Invoice Type", store=True),
 	'manual_override': fields.boolean('Manual Override'),
 	'supplier_payment': fields.boolean('Supplier Payment', help='Hides payment profile if true'),
 	'refunded': fields.boolean('Refunded'),
@@ -16,6 +17,8 @@ class AccountVoucher(osv.osv):
 		domain="['|',('parent_id', '=', partner_id), ('id', '=', partner_id)]"
 	),
 	'transaction_id': fields.char('Authorize.net Transaction ID', copy=False),
+	'capture_transaction_id': fields.char('Additional Capture Transaction ID', copy=False),
+	'capture_addl_amount': fields.float('Additional Capture Amount', copy=False),
 	'payment_profile': fields.many2one('payment.profile', 'Payment Profile', \
 		domain="['|',('partner', '=', partner_id), ('id', '=', partner_id)]"
 	),
