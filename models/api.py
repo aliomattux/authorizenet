@@ -94,12 +94,10 @@ class AuthorizeNetAPI(osv.osv_memory):
                         'amount': round(voucher.amount, 2),
         }
 
-	if voucher.partner_id.customer_profile_id:
-	    transaction['customerProfileId'] = \
-		voucher.partner_id.customer_profile_id
+	transaction['customerProfileId'] = \
+		voucher.payment_profile.customer_profile_id
 
-	if voucher.payment_profile:
-	    transaction['customerPaymentProfileId'] = voucher.payment_profile.profile
+	transaction['customerPaymentProfileId'] = voucher.payment_profile.profile
 
         #Not Implemented
 #       if voucher.tax_line:
@@ -156,12 +154,16 @@ class AuthorizeNetAPI(osv.osv_memory):
                        ('invoice', '=', invoice.id),
 		       ('transaction_id', '!=', False),
             ])
+	    print 'VOUCHER IDS', voucher_ids
 	    #There is not a valid 'not in' operator in the ORM. If you have a boolean field
 	    #That contains at least 1 null, you cannot use a domain because all results
 	    #Will be null. The only solution is to use not in.
 	    for v in voucher_obj.browse(cr, uid, voucher_ids):
 		if v.refunded:
-		    del voucher_ids[v.id]
+		    print "REFUNDED"
+		    voucher_ids.remove(v.id)
+		else:
+		    v.refunded = True
 
 	    checkable_vouchers.extend(voucher_ids)
 
@@ -333,9 +335,6 @@ class AuthorizeNetAPI(osv.osv_memory):
 
     def refund_transaction(self, cr, uid, auth, client, original_voucher, voucher, object, trans_vals):
 
-	#Write that the voucher has been refunded
-	self.pool.get('account.voucher').write(cr, uid, original_voucher.id, {'refunded': True})
-
 	#If the voucher being refunded contains multiple transactions
 	if original_voucher.capture_transaction_id:
 	    capture_vals = trans_vals
@@ -354,7 +353,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 		#Once we refund the captured amount, refund the original charge - captured amount.
 		trans_vals['amount'] = refund_total - capture_amount
-#		self.send_refund_transaction(cr, uid, auth, client, object, trans_vals)
+		self.send_refund_transaction(cr, uid, auth, client, object, trans_vals)
 		return True
 
 	    #The additional captured amount is less or equal to the amount required for refund
@@ -369,6 +368,8 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 
     def send_refund_transaction(self, cr, uid, auth, client, object, original_voucher, vals):
+	if vals['amount'] < 0.1:
+	    vals['amount'] = vals['amount'] * -1
 	voucher_date = original_voucher.create_date.split('-')
 	now = datetime.utcnow().strftime('%Y-%m-%d')
 	month = voucher_date[1]
@@ -377,6 +378,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 	if now.split('-')[-2:] == [month, day]:
 	    return self.void_transaction(cr, uid, auth, client, object, vals)
 
+	pp(vals)
 	object.transaction = {'profileTransRefund': vals}
 
 	try:
@@ -429,6 +431,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 		'partner': voucher.partner_id.id,
 		'expiration_date': voucher.expiration_date,
 		'card_type': 'visa',
+		'customer_profile_id': response.customerProfileId,
 		'payment_type': 'creditcard',
 		'profile': payment_id,
 		'card_number': card_hidden

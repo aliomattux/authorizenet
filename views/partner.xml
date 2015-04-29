@@ -25,13 +25,6 @@
                 <page string="Internal Notes" position="after">
 		    <page string="CIM" attrs="{'invisible': [('parent_id', '!=', False)]}">
 			<group>
-			    <group>
-			        <field name="customer_id" />
-			        <field name="customer_profile_id" />
-			    </group>
-			    <group>
-			        <field name="profile_description" />
-			    </group>
 			</group>
 			<group string="Payment Profiles">
 			    <field name="payment_profiles" widget="one2many_list" nolabel="1" readonly="1">

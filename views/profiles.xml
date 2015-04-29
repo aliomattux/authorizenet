@@ -11,6 +11,9 @@
 		    <field name="card_type" />
 		    <field name="card_number" />
 		    <field name="expiration_date" />
+		    <field name="customer_profile_id" />
+		    <field name="profile_description" />
+		    <field name="customer_id" />
                 </tree>
             </field>
         </record>

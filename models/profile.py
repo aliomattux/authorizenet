@@ -26,6 +26,9 @@ class PaymentProfile(osv.osv):
 
     _columns = {
 	'partner': fields.many2one('res.partner', 'Name', domain="[('parent_id', '=', False)]"),
+        'customer_profile_id': fields.integer('Customer Profile ID', copy=False),
+        'profile_description': fields.char('Profile Description', copy=False),
+        'customer_id': fields.integer('Customer ID', copy=False),
 	'profile': fields.integer('Profile ID', copy=False),
 	'payment_type': fields.selection([
 			('creditcard', 'Credit Card'),

@@ -8,9 +8,6 @@ class ResPartner(osv.osv):
 	'id': fields.integer('ID'),
         'firstname': fields.char('Firstname'),
         'lastname': fields.char('Lastname'),
-        'customer_profile_id': fields.integer('Customer Profile ID', copy=False),
-        'profile_description': fields.char('Profile Description'),
-        'customer_id': fields.integer('Customer ID', copy=False),
         'payment_profiles': fields.one2many('payment.profile', 'partner', 'Payment Profiles'),
     }
 
