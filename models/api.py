@@ -60,7 +60,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 	    ####  This functionality to be deprecated  ####
 	    else:
 		if voucher.payment_profile:
-		    self.authorize_and_capture_transaction(cr, uid, auth, client, object, transaction)
+		    self.authorize_and_capture_transaction(cr, uid, auth, client, object, voucher, transaction)
 
 		else:
 		    raise osv.except_osv(_('System Error'), _("You should not be able to get this far"))
@@ -128,7 +128,6 @@ class AuthorizeNetAPI(osv.osv_memory):
 		transaction['amount'] = round(refund_amount, 2)
 		done = True
 
-	    print 'Calling Refund Function'
 	    self.refund_transaction(cr, uid, auth, client, eligible_voucher, voucher, object, transaction)
 
 	    if done:
@@ -154,13 +153,11 @@ class AuthorizeNetAPI(osv.osv_memory):
                        ('invoice', '=', invoice.id),
 		       ('transaction_id', '!=', False),
             ])
-	    print 'VOUCHER IDS', voucher_ids
 	    #There is not a valid 'not in' operator in the ORM. If you have a boolean field
 	    #That contains at least 1 null, you cannot use a domain because all results
 	    #Will be null. The only solution is to use not in.
 	    for v in voucher_obj.browse(cr, uid, voucher_ids):
 		if v.refunded:
-		    print "REFUNDED"
 		    voucher_ids.remove(v.id)
 		else:
 		    v.refunded = True
@@ -316,7 +313,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 
     def authorize_and_capture_transaction(self, cr, uid, auth, client, \
-		object, trans_vals, customer_data=False):
+		object, voucher, trans_vals, customer_data=False):
 
 	if customer_data:
 	    trans_vals['customerProfileId'] = customer_data['customer_profile_id']
@@ -330,7 +327,20 @@ class AuthorizeNetAPI(osv.osv_memory):
 	except Exception, e:
 	    response = str(e)
 
-	return self.process_authnet_response(cr, uid, response)
+	#Check the response for errors
+	self.process_authnet_response(cr, uid, response)
+
+        #Get the new transaction id and amount so it can be used later if a refund is required
+        try:
+            capture_details = response.directResponse
+            details = capture_details.split(',')
+            transaction_id = details[6]
+            voucher_obj.write(cr, uid, voucher.id, {'transaction_id': transaction_id
+            })
+        except Exception, e:
+            pass
+
+	return True
 
 
     def refund_transaction(self, cr, uid, auth, client, original_voucher, voucher, object, trans_vals):
