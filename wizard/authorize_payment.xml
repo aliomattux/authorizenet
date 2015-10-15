@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openerp>
+    <data>
+        <record id="authorize_payment_form" model="ir.ui.view">
+            <field name="name">Authorize Payment Form</field>
+            <field name="model">sale.authorize.payment</field>
+            <field name="arch" type="xml">
+                <form string="">
+		    <group string="Customer Information">
+		        <field name="partner_id" readonly="1"/>
+		        <field name="sale" readonly="1"/>
+		        <field name="payment_profile" on_change="onchange_payment_profile(payment_profile)" />
+			<field name="billing_address" context="{'default_type':'invoice', 'show_address': 1}" options='{"always_reload": True}' />
+		    </group>
+		    <group string="Order Details">
+			<field name="amount_total" readonly="1" />
+			<field name="amount_preauthorized" readonly="1" />
+			<field name="difference_amount" readonly="1" />
+			<field name="amount" invisible="1" />
+		    </group>
+		    <group name="payment_details" string="Credit Card Info" attrs="{'invisible': [('payment_profile', '!=', False)]}">
+			<field name="card_number" attrs="{'required': [('payment_profile', '=', False)]}"/>
+			<field name="expiration_date" attrs="{'required': [('payment_profile', '=', False)]}"/>
+			<field name="cvv_code" />
+			<field name="street" attrs="{'required': [('payment_profile', '=', False)]}"/>
+			<field name="street2" />
+			<field name="state" />
+			<field name="country" attrs="{'required': [('payment_profile', '=', False)]}"/>
+			<field name="zip" attrs="{'required': [('payment_profile', '=', False)]}" />
+		    </group>
+		    <group>
+		        <button name="authorize_payment" string="Authorize" type="object" />
+		    </group>
+                </form>
+            </field>
+        </record>
+
+
+        <record id="action_authorize_payment" model="ir.actions.act_window">
+            <field name="name">Authorize Payment</field>
+            <field name="type">ir.actions.act_window</field>
+            <field name="res_model">sale.authorize.payment</field>
+            <field name="view_type">form</field>
+            <field name="view_mode">form</field>
+            <field name="view_id" ref="authorize_payment_form"/>
+            <field name="target">new</field>
+        </record>
+<!--            <field name="key2">client_action_multi</field> -->
+
+    </data>
+</openerp>

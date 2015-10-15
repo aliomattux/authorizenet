@@ -8,6 +8,9 @@ class SaleOrder(osv.osv):
 	),
 	'payment_auth_code': fields.char('Authorization Code', copy=False),
 	'payment_transaction_id': fields.char('Transaction ID', copy=False),
+        'authnet_method': fields.related('payment_method', 'authnet_method', \
+                type="boolean", string="Authorizenet Method"
+        ),
 	'authorization_amount': fields.float('Authorization Amount', copy=False),
 	'auth_type': fields.selection([
 				       ('auth_only', 'Authorization Only'),
@@ -21,6 +24,16 @@ class SaleOrder(osv.osv):
 	),
     }
 	
+    def onchange_payment_method(self, cr, uid, ids, payment_method, context=None):
+        method_obj = self.pool.get('payment.method')
+        if payment_method:
+            method = method_obj.browse(cr, uid, payment_method)
+            vals = {'authnet_method': method.authnet_method}
+        else:
+            vals = {}
+
+        return {'value': vals}
+
     def onchange_payment_profile(self, cr, uid, ids, profile_id, context=None):
         vals = {
                 'card_number': False,

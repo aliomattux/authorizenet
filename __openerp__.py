@@ -8,6 +8,7 @@
     'description': """ 
     """,
     'data': ['views/authorize_config.xml',
+	     'wizard/authorize_payment.xml',
 	     'views/profiles.xml',
 	     'views/partner.xml',
 	     'views/sale.xml',
@@ -15,6 +16,7 @@
 	     'views/account_voucher.xml',
 	     'views/account_journal.xml',
 	     'data/journal.xml',
+	     'data/profiles_seq.xml',
     ],
     'test': [
     ],

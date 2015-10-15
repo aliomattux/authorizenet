@@ -43,8 +43,32 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 	#If this is collecting a payment
 	if voucher.invoice.type == 'out_invoice':
+	    #If the sale order contains pre-authorizations
+	    if voucher.invoice.sale_order.authorizations:
+		b = False
+	        total_amount_due = voucher.amount
+		for authorization in voucher.invoice.sale_order.authorizations:
+		    amount_to_process = authorization.amount
+
+		    #Determine if the next authorization will exceed the remaining amount due
+		    remaining_amount = total_amount_due - amount_to_process
+		    if remaining_amount < 0:
+			amount_to_process =  total_amount_due
+			b = True
+
+
+                    self.capture_multiple_prior_auth_transaction(cr, uid, auth, client, \
+                        object, voucher, transaction, authorization
+                    )
+
+		    #Update the authorization state to captured
+		    authorization.auth_status = 'capture'
+		    total_amount_due = total_amount_due - amount_to_process
+		    if b == True:
+			break
+
 	    #If the voucher has a pre-authorization
-	    if voucher.authorization_code:
+	    elif voucher.authorization_code:
 
                 self.capture_prior_auth_transaction(cr, uid, auth, client, \
                     object, voucher, transaction
@@ -89,15 +113,18 @@ class AuthorizeNetAPI(osv.osv_memory):
 	return True
 
 
-    def create_transaction_vals(self, cr, uid, voucher, context=None):
+    def create_transaction_vals(self, cr, uid, object, context=None):
+	""" In order to call this method your object must contain the fields
+	    amount and payment_profile (payment.profile)
+	"""
         transaction = {
-                        'amount': round(voucher.amount, 2),
+                        'amount': round(object.amount, 2),
         }
 
 	transaction['customerProfileId'] = \
-		voucher.payment_profile.customer_profile_id
+		object.payment_profile.customer_profile_id
 
-	transaction['customerPaymentProfileId'] = voucher.payment_profile.profile
+	transaction['customerPaymentProfileId'] = object.payment_profile.profile
 
         #Not Implemented
 #       if voucher.tax_line:
@@ -201,6 +228,26 @@ class AuthorizeNetAPI(osv.osv_memory):
 	return taxes
 
 
+    def capture_multiple_prior_auth_transaction(self, cr, uid, auth, client, \
+                object, voucher, trans_vals, authorization
+        ):
+
+	#TODO: Review
+        trans_vals['transId'] = authorization.transaction_id
+        trans_vals['amount'] = round(authorization.amount, 2)
+
+        object.transaction = {'profileTransPriorAuthCapture': trans_vals}
+
+        try:
+            response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
+#           print 'SENT', client.last_sent()
+        except Exception, e:
+            response = str(e)
+
+        return self.process_authnet_response(cr, uid, response)
+
+
+    #This method to become deprecated
     def capture_prior_auth_transaction(self, cr, uid, auth, client, \
 		object, voucher, trans_vals
 	):
@@ -299,17 +346,6 @@ class AuthorizeNetAPI(osv.osv_memory):
 #	print 'DEBUG', response
 	return True
 
-
-    def authorize_transaction(self, cr, uid, auth, client, object, trans_vals):
-#	print 'Call Authorize only'
-	object.transaction = {'profileTransAuthOnly': trans_vals}
-
-	try:
-	    response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
-	except Exception, e:
-	    response = str(e)
-
-	return self.process_authnet_response(cr, uid, response)
 
 
     def authorize_and_capture_transaction(self, cr, uid, auth, client, \
@@ -417,13 +453,14 @@ class AuthorizeNetAPI(osv.osv_memory):
         return True
 
 
-    def prepare_and_create_payment_profile(self, cr, uid, auth, client, voucher):
+    #This function deprecated pending removal
+    def prepare_and_create_payment_profile_deprecated(self, cr, uid, auth, client, voucher):
 	print 'Creating Customer/Payment Profile'
-	vals = self.prepare_payment_profile(cr, uid, client, voucher)
+	vals = self.prepare_voucher_payment_profile(cr, uid, client, voucher)
 
 	try:
 	    response = self.create_payment_profile(cr, uid, auth, client, vals)
-#	    print 'SENT', client.last_sent()
+	    print 'SENT', client.last_sent()
 #	    print 'RESPONSE', response
 	except Exception, e:
 	    response = str(e)
@@ -447,8 +484,9 @@ class AuthorizeNetAPI(osv.osv_memory):
 		'card_number': card_hidden
 	}
 
-	self.pool.get('res.partner').write(cr, uid, voucher.partner_id.id, \
-		{'customer_profile_id': response.customerProfileId})
+	#TODO: This does not work
+#	self.pool.get('res.partner').write(cr, uid, voucher.partner_id.id, \
+#		{'customer_profile_id': response.customerProfileId})
 
 	odoo_payment_id = self.create_odoo_payment_profile(cr, uid, vals)
 	return {'payment_profile': payment_id, 
@@ -464,7 +502,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 	return profile_id
 	
 
-    def prepare_payment_profile(self, cr, uid, client, voucher):
+    def prepare_voucher_payment_profile(self, cr, uid, client, voucher):
 	address = voucher.billing_address
 	partner = voucher.partner_id
 	object = client.factory.create('CreateCustomerProfile')
@@ -473,22 +511,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 #	else:
 #	    print 'Creating Customer and Payment Profile'
 
-	#Some sloppy solution due to sloppy decision to remove firstname/lastname fields
-	if not partner.firstname:
-	    firstname = partner.name.split(' ')[0]
-	else:
-	    firstname = partner.firstname
-
-	billTo = {
-	    'firstName': firstname,
-	    'lastName': partner.lastname or firstname,
-	    'address': address.street,
-	    'city': address.city,
-	    'state': address.state_id.name,
-	    'zip': address.zip,
-	    'country': address.country_id.code,
-	    'phoneNumber': address.phone or '9999999999',
-	}
+	billTo = self.prepare_payment_profile_address(cr, uid, partner, address)
 
 	creditCard = {
 	    'cardNumber': voucher.card_number,
@@ -497,15 +520,36 @@ class AuthorizeNetAPI(osv.osv_memory):
 	}
 
 	data = {'customerType': 'individual',
-	'billTo': billTo,
-	'payment': {'creditCard': creditCard}
+		'billTo': billTo,
+		'payment': {'creditCard': creditCard}
 	}
 
         object.profile.paymentProfiles.CustomerPaymentProfileType.append(data)
-	#Do some sequence?
-	object.profile.merchantCustomerId = 'OD_' + str(address.id)
+	next_number = self.pool.get('ir.sequence').get(cr, uid, 'payment.profile.seq')
+	object.profile.merchantCustomerId = 'OD_' + next_number
 
 	return object
+
+
+    def prepare_payment_profile_address(self, cr, uid, partner, address):
+        #Some sloppy solution due to sloppy decision to remove firstname/lastname fields
+        if not partner.firstname:
+            firstname = partner.name.split(' ')[0]
+        else:
+            firstname = partner.firstname
+
+        billTo = {
+            'firstName': firstname,
+            'lastName': partner.lastname or firstname,
+            'address': address.street,
+            'city': address.city,
+            'state': address.state_id.name or None,
+            'zip': address.zip,
+            'country': address.country_id.code,
+            'phoneNumber': address.phone or '9999999999',
+        }
+
+	return billTo
 
 
     def create_payment_profile(self, cr, uid, auth, client, object):

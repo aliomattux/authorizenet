@@ -66,8 +66,8 @@ class AccountInvoice(osv.osv):
 		'default_invoice_type': invoice.type,
 	}
 
-	if invoice.purchase_order:
-	    default_vals['default_supplier_payment'] = True
+#	if invoice.purchase_order:
+#	    default_vals['default_supplier_payment'] = True
 
 	journal = self.get_cc_payment_journal(cr, uid, invoice)
 	if journal:
