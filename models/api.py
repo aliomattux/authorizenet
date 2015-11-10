@@ -136,29 +136,49 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 
     def find_and_process_refund_vouchers(self, cr, uid, auth, client, voucher, object, transaction):
-	eligible_refund_vouchers = self.find_eligible_refund_vouchers(cr, uid, voucher)
 	refund_amount = voucher.amount
+	if voucher.invoice.sale_order.authorizations:
+	    total_refund_amount = voucher.amount
+	    b = False
+	    for authorization in voucher.invoice.sale_order.authorizations:
+		if auth_status != 'capture':
+		    continue
+		amount_to_refund = authorization.amount
+		remaining_amount = total_refund_amount = amount_to_refund
+		if remaining_amount < 0:
+		    b = True
+		    amount_to_refund = total_refund_amount
 
-	if not eligible_refund_vouchers:
-	    raise osv.except_osv(_('User Error'), _('You are trying to process a refund but there are no eligible payments to refund. Please manually refund this transaction in Authorize.net'))
+		transaction['transId'] = authorization.transaction_id
+		transaction['amount'] = amount_to_refund
+		self.refund_transaction(cr, uid, auth, client, False, voucher, object, transaction)
+		total_refund_amount -= amount_to_refund
+		authorization.auth_status = 'refund'
+		if b:
+		    break
+	else:
+	    eligible_refund_vouchers = self.find_eligible_refund_vouchers(cr, uid, voucher)
 
-	done = False
-	for eligible_voucher in self.pool.get('account.voucher').browse(cr, uid, eligible_refund_vouchers):
+	    if not eligible_refund_vouchers:
+	        raise osv.except_osv(_('User Error'), _('You are trying to process a refund but there are no eligible payments to refund. Please manually refund this transaction in Authorize.net'))
 
-	    transaction['transId'] = eligible_voucher.transaction_id
+	    done = False
+	    for eligible_voucher in self.pool.get('account.voucher').browse(cr, uid, eligible_refund_vouchers):
+
+	        transaction['transId'] = eligible_voucher.transaction_id
 	
-	    if round(refund_amount, 2) > round(eligible_voucher.amount, 2):
-		transaction['amount'] = round(eligible_voucher.amount, 2)
-		refund_amount -= round(eligible_voucher.amount, 2)
+	        if round(refund_amount, 2) > round(eligible_voucher.amount, 2):
+		    transaction['amount'] = round(eligible_voucher.amount, 2)
+		    refund_amount -= round(eligible_voucher.amount, 2)
 
-	    else:
-		transaction['amount'] = round(refund_amount, 2)
-		done = True
+	        else:
+		    transaction['amount'] = round(refund_amount, 2)
+		    done = True
 
-	    self.refund_transaction(cr, uid, auth, client, eligible_voucher, voucher, object, transaction)
+	        self.refund_transaction(cr, uid, auth, client, eligible_voucher, voucher, object, transaction)
 
-	    if done:
-		break
+	        if done:
+		    break
 
 	return True
 
@@ -381,6 +401,11 @@ class AuthorizeNetAPI(osv.osv_memory):
 
     def refund_transaction(self, cr, uid, auth, client, original_voucher, voucher, object, trans_vals):
 
+	#TODO: Verify functionality. does amount need to be negative?
+	if not original_voucher:
+	    self.send_refund_transaction(cr, uid, auth, client, object, trans_vals)
+	    return True
+	    
 	#If the voucher being refunded contains multiple transactions
 	if original_voucher.capture_transaction_id:
 	    capture_vals = trans_vals
