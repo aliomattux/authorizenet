@@ -36,6 +36,7 @@ class AuthorizeNetAPI(osv.osv_memory):
     def create_sale_transaction_vals(self, cr, uid, sale_wizard, sale, context=None):
         transaction = {
                         'amount': round(sale_wizard.amount, 2),
+			'order': {'invoiceNumber': sale.name or 'none'}
         }
 
         transaction['customerProfileId'] = \

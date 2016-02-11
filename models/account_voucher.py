@@ -46,7 +46,7 @@ class AccountVoucher(osv.osv):
 	if not voucher.payment_profile:
 	    client, auth = processor_obj._create_client(cr, uid)
 	    profile_info = processor_obj.prepare_and_create_payment_profile(cr, uid, \
-		auth, client, voucher
+		auth, client, 'voucher', voucher
 	    )
 
 	    voucher.payment_profile = profile_info['odoo_payment_id']
