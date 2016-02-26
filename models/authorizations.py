@@ -25,8 +25,19 @@ class authorizenet_authorizations(osv.osv):
 
     def void_authorization(self, cr, uid, ids, context=None):
 	#TODO: Implement Void functionality
+	auth_obj = self.pool.get('authorizenet.api')
+	client, authorization = auth_obj._create_client(cr, uid)
 	for auth in self.browse(cr, uid, ids):
+	    vals = {'customerProfileId': auth.payment_profile.customer_profile_id,
+		'customerPaymentProfileId': auth.payment_profile.profile,
+		'amount': 0,
+		'transId': auth.transaction_id,
+	    }
+	    object = client.factory.create('CreateCustomerProfile')
+	    auth_obj.void_transaction(cr, uid, authorization, client, object, vals)
 	    auth.auth_status = 'void'
+	    #Decrement the sale order auathorized amount
+	    auth.sale.authorization_amount -= auth.amount
 
 	return True
 

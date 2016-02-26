@@ -11,7 +11,7 @@
 		<group name="payment" position="after">
 		    <field name="authnet_method" invisible="1" />
 		    <group string="Pre-Auth" attrs="{'invisible': [('authnet_method', '=', False)]}">
-			<button name="%(action_authorize_payment)d" type="action" string="Authorize Payment" icon="terp-document-new" attrs="{'invisible': [('state', '!=', 'draft')]}"/>
+			<button name="%(action_authorize_payment)d" type="action" string="Authorize Payment" icon="terp-document-new" />
 		    </group>
 		    <group string="CIM" attrs="{'invisible': [('authnet_method', '=', False)]}">
 			<field name="payment_profile" on_change="onchange_payment_profile(payment_profile)"/>
@@ -30,7 +30,7 @@
 				<field name="amount" />
 				<field name="card_number" />
 				<field name="auth_status" />
-				<button name="void_authorization" string="Void" attrs="{'invisible': [('auth_status', '!=', 'auth')]}" />
+				<button name="void_authorization" string="Void" attrs="{'invisible': [('auth_status', '!=', 'auth')]}" type="object"/>
 			    </tree>
 			</field>
 		    </group>

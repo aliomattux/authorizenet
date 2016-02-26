@@ -17,6 +17,11 @@ class AuthorizeNetAPI(osv.osv_memory):
         client, auth = self._create_client(cr, uid)
 	profile_info = False
 
+	#Do not allow them to continue if the amount is nothing
+	amount_total = sale_wizard.sale.amount_total
+	if not amount_total or amount_total and amount_total < 0.01:
+	    raise osv.except_osv(_('Value Error'), _('Total amount must be greater than 0.00!'))
+	    
 	if not sale_wizard.payment_profile:
             profile_info = self.prepare_and_create_payment_profile(cr, uid, \
                 auth, client, 'sale', sale_wizard
@@ -24,6 +29,9 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 	    #Update the sale order to have the customers profile
 	    sale_wizard.sale.payment_profile = profile_info['odoo_payment_id']
+	    #If the payment profile is created but the rest of the script fails, the profile creation cannot be rolled
+	    #back in the external system so we must commit
+	    cr.commit()
 
         transaction = self.create_sale_transaction_vals(cr, uid, sale_wizard, sale_wizard.sale)
         object = client.factory.create('CreateCustomerProfileTransaction')
@@ -36,6 +44,7 @@ class AuthorizeNetAPI(osv.osv_memory):
     def create_sale_transaction_vals(self, cr, uid, sale_wizard, sale, context=None):
         transaction = {
                         'amount': round(sale_wizard.amount, 2),
+			'order': {'invoiceNumber': sale.name or 'none'}
         }
 
         transaction['customerProfileId'] = \

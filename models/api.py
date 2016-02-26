@@ -48,6 +48,9 @@ class AuthorizeNetAPI(osv.osv_memory):
 		b = False
 	        total_amount_due = voucher.amount
 		for authorization in voucher.invoice.sale_order.authorizations:
+		    if authorization.auth_status != 'auth':
+			continue
+
 		    amount_to_process = authorization.amount
 
 		    #Determine if the next authorization will exceed the remaining amount due
@@ -67,9 +70,14 @@ class AuthorizeNetAPI(osv.osv_memory):
 		    if b == True:
 			break
 
+#	        if not b:
+ #                   if voucher.payment_profile:
+  #                      self.authorize_and_capture_transaction(cr, uid, auth, client, object, voucher, transaction)
+
+
 	    #If the voucher has a pre-authorization
 	    elif voucher.authorization_code:
-
+		print 'Going with Code'
                 self.capture_prior_auth_transaction(cr, uid, auth, client, \
                     object, voucher, transaction
                 )
@@ -141,21 +149,23 @@ class AuthorizeNetAPI(osv.osv_memory):
 	    total_refund_amount = voucher.amount
 	    b = False
 	    for authorization in voucher.invoice.sale_order.authorizations:
-		if auth_status != 'capture':
+		if authorization.auth_status != 'capture':
 		    continue
 		amount_to_refund = authorization.amount
-		remaining_amount = total_refund_amount = amount_to_refund
+		remaining_amount = total_refund_amount - amount_to_refund
 		if remaining_amount < 0:
 		    b = True
 		    amount_to_refund = total_refund_amount
 
 		transaction['transId'] = authorization.transaction_id
 		transaction['amount'] = amount_to_refund
-		self.refund_transaction(cr, uid, auth, client, False, voucher, object, transaction)
+		self.refund_transaction(cr, uid, auth, client, False, voucher, object, transaction, authorization=authorization)
 		total_refund_amount -= amount_to_refund
 		authorization.auth_status = 'refund'
 		if b:
 		    break
+	    if not b:
+		raise osv.except_osv(_('System Error'), _("Your refund will not be processed in Authorize.net because no payments could be found to refund."))
 	else:
 	    eligible_refund_vouchers = self.find_eligible_refund_vouchers(cr, uid, voucher)
 
@@ -399,11 +409,11 @@ class AuthorizeNetAPI(osv.osv_memory):
 	return True
 
 
-    def refund_transaction(self, cr, uid, auth, client, original_voucher, voucher, object, trans_vals):
+    def refund_transaction(self, cr, uid, auth, client, original_voucher, voucher, object, trans_vals, authorization=False):
 
 	#TODO: Verify functionality. does amount need to be negative?
-	if not original_voucher:
-	    self.send_refund_transaction(cr, uid, auth, client, object, trans_vals)
+	if not original_voucher and authorization:
+	    self.send_refund_transaction(cr, uid, auth, client, object, original_voucher, authorization, trans_vals)
 	    return True
 	    
 	#If the voucher being refunded contains multiple transactions
@@ -420,36 +430,44 @@ class AuthorizeNetAPI(osv.osv_memory):
 	    if refund_total > capture_amount:
 		capture_vals['amount'] = capture_amount 
 	        capture_vals['transId'] = original_voucher.capture_transaction_id
-	        self.send_refund_transaction(cr, uid, auth, client, object, original_voucher, capture_vals)
+	        self.send_refund_transaction(cr, uid, auth, client, object, original_voucher, original_voucher, capture_vals)
 
 		#Once we refund the captured amount, refund the original charge - captured amount.
 		trans_vals['amount'] = refund_total - capture_amount
-		self.send_refund_transaction(cr, uid, auth, client, object, trans_vals)
+		self.send_refund_transaction(cr, uid, auth, client, object, original_voucher, original_voucher, trans_vals)
 		return True
 
 	    #The additional captured amount is less or equal to the amount required for refund
 	    else:
 		capture_vals['transId'] = original_voucher.capture_transaction_id
-		self.send_refund_transaction(cr, uid, auth, client, object, original_voucher, capture_vals)
+		self.send_refund_transaction(cr, uid, auth, client, object, original_voucher, original_voucher, capture_vals)
 		return True
 
 	#There is no additional captures on the voucher
 	else:
-	    self.send_refund_transaction(cr, uid, auth, client, object, original_voucher, trans_vals)
+	    self.send_refund_transaction(cr, uid, auth, client, object, original_voucher, original_voucher, trans_vals)
 
 
-    def send_refund_transaction(self, cr, uid, auth, client, object, original_voucher, vals):
+    def send_refund_transaction(self, cr, uid, auth, client, object, original_voucher, multi_object, vals):
+	print 'Calling Refund'
 	if vals['amount'] < 0.1:
 	    vals['amount'] = vals['amount'] * -1
-	voucher_date = original_voucher.create_date.split('-')
+	voucher_date = multi_object.create_date.split('-')
 	now = datetime.utcnow().strftime('%Y-%m-%d')
 	month = voucher_date[1]
 	day = voucher_date[2].split(' ')[0]
 	#If the transaction was created before settlement it needs to be voided
 	if now.split('-')[-2:] == [month, day]:
+	    print 'Voided'
 	    return self.void_transaction(cr, uid, auth, client, object, vals)
 
 	pp(vals)
+	if original_voucher and original_voucher.invoice:
+	    ref = original_voucher.invoice.number
+	    if len(ref) > 20:
+		ref = ref[0:20]
+		object.refId = ref
+
 	object.transaction = {'profileTransRefund': vals}
 
 	try:
@@ -470,7 +488,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 	    response = client.service.CreateCustomerProfileTransaction(auth, object.transaction)
 	except Exception, e:
 	    response = str(e)
-
+	pp(response)
 	return self.process_authnet_response(cr, uid, response)
 
 
@@ -485,7 +503,6 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 	try:
 	    response = self.create_payment_profile(cr, uid, auth, client, vals)
-	    print 'SENT', client.last_sent()
 #	    print 'RESPONSE', response
 	except Exception, e:
 	    response = str(e)
