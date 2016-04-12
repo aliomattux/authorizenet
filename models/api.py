@@ -43,41 +43,46 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 	#If this is collecting a payment
 	if voucher.invoice.type == 'out_invoice':
+	    already_captured = False
+	    capture_complete = False
 	    #If the sale order contains pre-authorizations
 	    if voucher.invoice.sale_order.authorizations:
-		b = False
-	        total_amount_due = voucher.amount
+	        total_amount_due = round(voucher.amount, 2)
+		captured_authorization = False
 		for authorization in voucher.invoice.sale_order.authorizations:
+		    amount_to_process = round(authorization.amount, 2)
 		    if authorization.auth_status != 'auth':
+			if authorization.auth_status == 'capture':
+			    total_amount_due -= amount_to_process
+			    captured_authorization = authorization
 			continue
-
-		    amount_to_process = authorization.amount
 
 		    #Determine if the next authorization will exceed the remaining amount due
 		    remaining_amount = total_amount_due - amount_to_process
-		    if remaining_amount < 0:
-			amount_to_process =  total_amount_due
-			b = True
+		    if round(remaining_amount, 2) <= 0:
+			amount_to_process = total_amount_due
+			capture_complete = True
+
+		    else:
+			print 'Did not Trigger Voucher Amount', amount_to_process
 
 
                     self.capture_multiple_prior_auth_transaction(cr, uid, auth, client, \
-                        object, voucher, transaction, authorization
+                        object, voucher, transaction, authorization, amount_to_process
                     )
 
 		    #Update the authorization state to captured
 		    authorization.auth_status = 'capture'
-		    total_amount_due = total_amount_due - amount_to_process
-		    if b == True:
+		    captured_authorization = authorization
+		    total_amount_due -= amount_to_process
+		    if round(total_amount_due, 2) <= 0:
 			break
 
-#	        if not b:
- #                   if voucher.payment_profile:
-  #                      self.authorize_and_capture_transaction(cr, uid, auth, client, object, voucher, transaction)
-
+	        if not capture_complete and round(total_amount_due, 2) > 0 and voucher.payment_profile:
+                    self.capture_transaction(cr, uid, auth, client, voucher, total_amount_due, captured_authorization)
 
 	    #If the voucher has a pre-authorization
 	    elif voucher.authorization_code:
-		print 'Going with Code'
                 self.capture_prior_auth_transaction(cr, uid, auth, client, \
                     object, voucher, transaction
                 )
@@ -259,13 +264,13 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 
     def capture_multiple_prior_auth_transaction(self, cr, uid, auth, client, \
-                object, voucher, trans_vals, authorization
+                object, voucher, trans_vals, authorization, amount_to_process
         ):
 
 	#TODO: Review
         trans_vals['transId'] = authorization.transaction_id
-        trans_vals['amount'] = round(authorization.amount, 2)
-
+        trans_vals['amount'] = round(amount_to_process, 2)
+	pp(trans_vals)
         object.transaction = {'profileTransPriorAuthCapture': trans_vals}
 
         try:
@@ -297,16 +302,15 @@ class AuthorizeNetAPI(osv.osv_memory):
 	return self.process_authnet_response(cr, uid, response)
 
 
-    def capture_transaction(self, cr, uid, auth, client, voucher):
+    def capture_transaction(self, cr, uid, auth, client, voucher, amount, authorization):
 
 	voucher_obj = self.pool.get('account.voucher')
 	#We must create a brand new transaction
 	object = client.factory.create('CreateCustomerProfileTransaction')
 	trans_vals = self.create_transaction_vals(cr, uid, voucher)
-	amount = round(voucher.amount, 2) - round(voucher.preauthorized_amount, 2)
 	trans_vals['amount'] = amount
 
-	trans_vals['approvalCode'] = voucher.authorization_code
+	trans_vals['approvalCode'] = authorization.authorization_code
 	object.transaction = {'profileTransCaptureOnly': trans_vals}
 
 	try:
@@ -449,7 +453,6 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 
     def send_refund_transaction(self, cr, uid, auth, client, object, original_voucher, multi_object, vals):
-	print 'Calling Refund'
 	if vals['amount'] < 0.1:
 	    vals['amount'] = vals['amount'] * -1
 	voucher_date = multi_object.create_date.split('-')
@@ -458,7 +461,6 @@ class AuthorizeNetAPI(osv.osv_memory):
 	day = voucher_date[2].split(' ')[0]
 	#If the transaction was created before settlement it needs to be voided
 	if now.split('-')[-2:] == [month, day]:
-	    print 'Voided'
 	    return self.void_transaction(cr, uid, auth, client, object, vals)
 
 	pp(vals)
@@ -498,7 +500,6 @@ class AuthorizeNetAPI(osv.osv_memory):
 
     #This function deprecated pending removal
     def prepare_and_create_payment_profile_deprecated(self, cr, uid, auth, client, voucher):
-	print 'Creating Customer/Payment Profile'
 	vals = self.prepare_voucher_payment_profile(cr, uid, client, voucher)
 
 	try:
