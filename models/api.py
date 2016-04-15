@@ -181,7 +181,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 	    for eligible_voucher in self.pool.get('account.voucher').browse(cr, uid, eligible_refund_vouchers):
 
 	        transaction['transId'] = eligible_voucher.transaction_id
-	
+
 	        if round(refund_amount, 2) > round(eligible_voucher.amount, 2):
 		    transaction['amount'] = round(eligible_voucher.amount, 2)
 		    refund_amount -= round(eligible_voucher.amount, 2)
@@ -252,13 +252,13 @@ class AuthorizeNetAPI(osv.osv_memory):
     def prepare_transaction_tax_vals(self, cr, uid, tax_lines, context=None):
 	taxes = {}
 #	for tax in taxes:
-	    
+
 
 	#Not Implemented
 #	if voucher.tax_line:
 #	    transaction['tax'] = self.prepare_transaction_taxes(
 #		cr, uid, voucher.tax_line
-#	    )		
+#	    )
 
 	return taxes
 
@@ -340,7 +340,7 @@ class AuthorizeNetAPI(osv.osv_memory):
     #I know the try except, and parsing here and other places is not good
     #I want to ensure there is no uncaptured error when dealing with money
     #So I over ensure that we know exactly what happened and tell the user
-    def process_authnet_response(self, cr, uid, response):
+    def process_authnet_response(self, cr, uid, response, void=False):
 	message = False
 
 	if not response:
@@ -351,6 +351,8 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 	except Exception, e:
 	    message = 'Could not get Response Code for: ' + str(response)
+	    if void:
+		return False
 	    raise osv.except_osv(_('Gateway Error'), _(message))
 
 	if code == 'Ok':
@@ -375,8 +377,10 @@ class AuthorizeNetAPI(osv.osv_memory):
 
 
 	if message:
-	    raise osv.except_osv(_('Gateway Error'), _(message))
-
+	    if message and not void:
+	        raise osv.except_osv(_('Gateway Error'), _(message))
+	    if message and void:
+		return False
 #	print 'DEBUG', response
 	return True
 
@@ -419,7 +423,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 	if not original_voucher and authorization:
 	    self.send_refund_transaction(cr, uid, auth, client, object, original_voucher, authorization, trans_vals)
 	    return True
-	    
+
 	#If the voucher being refunded contains multiple transactions
 	if original_voucher.capture_transaction_id:
 	    capture_vals = trans_vals
@@ -432,7 +436,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 	    #In this case we need to do 2 calls. Refund the original charge
 	    #And the extra charge we captured
 	    if refund_total > capture_amount:
-		capture_vals['amount'] = capture_amount 
+		capture_vals['amount'] = capture_amount
 	        capture_vals['transId'] = original_voucher.capture_transaction_id
 	        self.send_refund_transaction(cr, uid, auth, client, object, original_voucher, original_voucher, capture_vals)
 
@@ -477,7 +481,9 @@ class AuthorizeNetAPI(osv.osv_memory):
 	except Exception, e:
 	    response = str(e)
 
-	return self.process_authnet_response(cr, uid, response)
+	refunded = self.process_authnet_response(cr, uid, response, void=True)
+	if not refunded:
+	    return self.void_transaction(cr, uid, auth, client, object, vals)
 
 
     def void_transaction(self, cr, uid, auth, client, object, trans_vals):
@@ -532,7 +538,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 #		{'customer_profile_id': response.customerProfileId})
 
 	odoo_payment_id = self.create_odoo_payment_profile(cr, uid, vals)
-	return {'payment_profile': payment_id, 
+	return {'payment_profile': payment_id,
 		'odoo_payment_id': odoo_payment_id,
 		'customer_profile_id': response.customerProfileId,
 		'card_number': card_hidden,
@@ -543,7 +549,7 @@ class AuthorizeNetAPI(osv.osv_memory):
 	profile_obj = self.pool.get('payment.profile')
 	profile_id = profile_obj.create(cr, uid, vals)
 	return profile_id
-	
+
 
     def prepare_voucher_payment_profile(self, cr, uid, client, voucher):
 	address = voucher.billing_address
